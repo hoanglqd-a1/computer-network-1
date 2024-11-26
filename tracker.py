@@ -4,7 +4,7 @@ import pickle
 import os
 import time
 
-CONN_TEST_TIME = 2
+CONN_TEST_TIME = 6
 
 def get_local_ip():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -58,7 +58,7 @@ class Manager:
             current_time = time.time()
             closed_connections = []  # stores the keys for closed connections
             for addr, last_time in self.last_check.items():
-                if current_time - last_time > 1:
+                if current_time - last_time > CONN_TEST_TIME:
                     closed_connections.append(addr)
 
             for addr in closed_connections:
@@ -68,7 +68,7 @@ class Manager:
     def receive_message_from_peer(self, conn:socket.socket, addr):
         while True:
             try:
-                message = pickle.loads(conn.recv(8192))
+                message = pickle.loads(conn.recv(16384))
                 if message['type'] == 'stay connected':
                     self.last_check[addr] = time.time()
                 elif message['type'] == 'close':

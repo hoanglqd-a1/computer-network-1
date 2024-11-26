@@ -8,8 +8,8 @@ import hashlib
 from file import completeFile, incompleteFile, PIECE_LENGTH
 
 PEERS_DIR = "./Peers/"
-CONN_STAY_TIME = 1
-PEER_TIMEOUT = 2
+CONN_STAY_TIME = 3
+PEER_TIMEOUT = 10
 TRACKER_PORT = 1234
 
 def get_local_ip():
@@ -100,7 +100,11 @@ class Peer:
                         'type': 'response_chunk',
                         'chunk': chunk,
                     })
-                    conn.send(message)
+                    # message = pickle.dumps({
+                    #     'type': 'test',
+                    # })
+                    # print(len(message), "bytes sent")
+                    conn.sendall(message)
                 elif message['type'] == 'close':
                     conn.close()
                     break
@@ -119,6 +123,7 @@ class Peer:
             'addr': (self.ip, self.port),
             'torrent': torrent_file,
         })
+        # print(len(message))
         self.manager_conn_socket.send(message)
         return info_hash
     
@@ -151,6 +156,7 @@ class Peer:
                 get_chunk_thread.start()
             for thread in running_thread:
                 thread.join()
+            time.sleep(1)
 
         end = time.time()
         print(f"Time taken to download {torrent_file.info['name']} is {end - start} seconds")
