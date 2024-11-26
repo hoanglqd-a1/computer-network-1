@@ -35,7 +35,7 @@ class Manager:
         self.PORT = port
         print(f"Tracker is running on {self.IP}:{self.PORT}")
 
-        self.s = socket.socket()
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind((self.IP, self.PORT))
         self.s.listen(10)
 

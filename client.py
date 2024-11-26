@@ -32,11 +32,11 @@ class Peer:
         if not os.path.isdir(self.torrent_dir):
             os.mkdir(self.torrent_dir)
         
-        self.my_socket = socket.socket()
+        self.my_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.my_socket.bind((self.ip, self.port))
 
     def connect_to_manager(self, ip, port=TRACKER_PORT):
-        self.manager_conn_socket = socket.socket()
+        self.manager_conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.manager_addr = (ip, port)
         self.manager_conn_socket.connect(self.manager_addr)
         message = pickle.dumps({
