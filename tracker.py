@@ -80,18 +80,18 @@ class Manager:
                     if info_hash not in self.torrent_dict:
                         self.torrent_dict[info_hash] = {}
                         self.torrent_dict[info_hash]['torrent'] = torrent_file
-                        self.torrent_dict[info_hash]['peers'] = []
-                    self.torrent_dict[info_hash]['peers'].append(message['addr'])
+                        self.torrent_dict[info_hash]['peers'] = set()
+                    self.torrent_dict[info_hash]['peers'].add(message['addr'])
                     print(message['info_hash'], message['torrent'].info['name'], message['addr'])
                 elif message['type'] == 'get peers':
                     info_hash = message['info_hash']
-                    if info_hash not in self.torrent_dict or self.torrent_dict[info_hash]['peers'] == []:
+                    if info_hash not in self.torrent_dict or self.torrent_dict[info_hash]['peers'] == set():
                         message = pickle.dumps({
                             'type': 'not available',
                         })
                         conn.send(message)
                         continue
-                    peers = self.torrent_dict[info_hash]['peers']
+                    peers = list(self.torrent_dict[info_hash]['peers'])
                     message = pickle.dumps({
                         'type': 'available',
                         'peers with file': peers,
@@ -100,8 +100,8 @@ class Manager:
                     conn.send(message)
                 elif message['type'] == 'downloaded':
                     info_hash = message['info_hash']
-                    self.torrent_dict[info_hash]['peers'].append(message['addr'])
-                    print("Peers holding file:", self.torrent_dict[info_hash]['peers'])
+                    self.torrent_dict[info_hash]['peers'].add(message['addr'])
+                    print("Peers holding file:", list(self.torrent_dict[info_hash]['peers']))
                         
             except Exception as e:
                 print(e)
