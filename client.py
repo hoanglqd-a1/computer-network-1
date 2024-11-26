@@ -5,12 +5,11 @@ import os
 import time
 from torrent import torrent
 import hashlib
-from file import completeFile, incompleteFile
+from file import completeFile, incompleteFile, PIECE_LENGTH
 
 PEERS_DIR = "./Peers/"
 CONN_STAY_TIME = 1
 PEER_TIMEOUT = 2
-PIECE_LENGTH = 512*1024
 TRACKER_PORT = 1234
 
 def get_local_ip():
@@ -21,6 +20,7 @@ def get_local_ip():
 class Peer:
     manager_conn_socket: socket.socket
     my_socket: socket.socket
+    manager_addr: tuple
     def __init__(self, port: int, name: str):
         self.port = port
         self.name = name
@@ -69,7 +69,7 @@ class Peer:
         sock.send(message)
         sock.settimeout(PEER_TIMEOUT)
         try:
-            message = pickle.loads(sock.recv(PIECE_LENGTH + 1024))
+            message = pickle.loads(sock.recv(PIECE_LENGTH + 8192))
             if message['type'] == "response_chunk":
                 assert hashlib.sha1(message['chunk']).hexdigest() == torrent_file.info['pieces'][chunk_no]
                 incomp_file.write_chunk(message['chunk'], chunk_no)
@@ -82,15 +82,15 @@ class Peer:
         self.my_socket.listen(10)
         while True:
             try:
-                conn, addr = self.my_socket.accept()
+                conn, _ = self.my_socket.accept()
                 recv_msg_peer_thread = threading.Thread(target=self.receive_message_from_peer, args=(conn,), daemon=True)
                 recv_msg_peer_thread.start()
             except Exception as e:
-                print(e)
+                print("Exception 2", e)
     def receive_message_from_peer(self, conn:socket.socket):
         while True:
             try:
-                message = pickle.loads(conn.recv(1024))
+                message = pickle.loads(conn.recv(8192))
                 if message['type'] == 'request chunk':
                     filename = message['filename']
                     chunk_no = message['chunk_no']
@@ -105,12 +105,12 @@ class Peer:
                     conn.close()
                     break
             except Exception as e:
-                print("Exception", e)
+                print("Exception 1", e)
                 break
     
     def upload_file(self, file_name):
         file_dir = self.directory + file_name
-        torrent_file = torrent(file_dir)
+        torrent_file = torrent(file_dir, PIECE_LENGTH, self.manager_addr[0], self.manager_addr[1])
         info_hash = torrent_file.get_info_hash()
         torrent_file.write_torrent(self.torrent_dir)
         message = pickle.dumps({
@@ -124,27 +124,28 @@ class Peer:
     
     def download_file(self, info_hash):
         self.manager_conn_socket.send(pickle.dumps({'type': 'get peers', 'info_hash': info_hash}))
-        message = pickle.loads(self.manager_conn_socket.recv(1024))
+        message = pickle.loads(self.manager_conn_socket.recv(8192))
         if message['type'] == 'not available':
             print("File is not available")
             return
         torrent_file = message['torrent']
         torrent_file.write_torrent(self.torrent_dir)
-        recieving_file = incompleteFile(torrent_file.info['name'], self.name, torrent_file.info['size'])
+        receiving_file = incompleteFile(torrent_file.info['name'], self.name, torrent_file.info['size'])
         start = time.time()
-        while len(recieving_file.get_needed()) != 0:
+        while len(receiving_file.get_needed()) != 0:
             self.manager_conn_socket.send(pickle.dumps({'type': 'get peers', 'info_hash': info_hash}))
-            message = pickle.loads(self.manager_conn_socket.recv(1024))
+            message = pickle.loads(self.manager_conn_socket.recv(8192))
             if message['type'] == 'not available':
                 print("File is not available")
                 return
             peers_with_file = message['peers with file']
-            needed_chunks = recieving_file.get_needed()
+            needed_chunks = receiving_file.get_needed()
             running_thread = []
             for i in range(min(len(needed_chunks), len(peers_with_file))):
                 get_chunk_thread = threading.Thread(
                     target=self.get_chunk_from_peer,
-                    args=(torrent_file, peers_with_file[i], needed_chunks[i], recieving_file)
+                    args=(torrent_file, peers_with_file[i], needed_chunks[i], receiving_file),
+                    daemon=True
                 )
                 running_thread.append(get_chunk_thread)
                 get_chunk_thread.start()
@@ -154,7 +155,7 @@ class Peer:
         end = time.time()
         print(f"Time taken to download {torrent_file.info['name']} is {end - start} seconds")
 
-        recieving_file.write_file()
+        receiving_file.write_file()
         print(f"File {torrent_file.info['name']} downloaded")
         self.manager_conn_socket.send(pickle.dumps({'type': 'downloaded', 'info_hash': info_hash, 'addr': (self.ip, self.port)}))
 

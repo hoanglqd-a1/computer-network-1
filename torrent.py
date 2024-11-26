@@ -4,7 +4,7 @@ import math
 import os
 
 class torrent:
-    def __init__(self, file_path, tracker_ip='127.0.0.1', tracker_port=2000, piece_length=512*1024):
+    def __init__(self, file_path, piece_length, tracker_ip='127.0.0.1', tracker_port=2000):
         self.tracker_ip  = tracker_ip
         self.tracker_port = tracker_port
         self.piece_length = piece_length
@@ -26,8 +26,10 @@ class torrent:
         return hashlib.sha1(pickle.dumps(self.info)).hexdigest()
     
     def write_torrent(self, torrent_dir):
-        assert os.path.isdir(torrent_dir)            
-        path = torrent_dir + self.info['name'].split('.')[0] + '.torrent'            
+        assert os.path.isdir(torrent_dir)      
+        path = torrent_dir + self.info['name'].split('.')[0] + '.torrent'    
+        if os.path.isfile(path):
+            os.remove(path)        
         with open(path, 'wb') as f:
             content = {
                 'announce': self.announce,
