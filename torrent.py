@@ -51,4 +51,4 @@ class torrent:
                 'announce': self.announce,
                 'info': self.info,
             }
-            f.write(pickle.dumps(content))
+            pickle.dump(content, f)

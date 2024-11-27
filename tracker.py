@@ -69,7 +69,7 @@ class Manager:
     def receive_message_from_peer(self, conn:socket.socket, addr):
         while True:
             try:
-                message = pickle.loads(conn.recv(16384))
+                message = pickle.loads(conn.recv(1024 * 1024))
                 if message['type'] == 'stay connected':
                     self.last_check[addr] = time.time()
                 elif message['type'] == 'close':

@@ -13,6 +13,7 @@ CONN_STAY_TIME = 2
 PEER_TIMEOUT = 4
 TRACKER_PORT = 1234
 
+
 def get_local_ip():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.connect(("8.8.8.8", 80))
@@ -127,6 +128,7 @@ class Peer:
                 break
     
     def upload_file(self, filenames):
+        print("Uploading file")
         file_names = filenames.split(',')
         file_dirs = []
         for file_name in file_names:
@@ -156,7 +158,7 @@ class Peer:
             print("File is not available")
             return
         torrent_file = message['torrent']
-        torrent_file.write_torrent(self.torrent_dir)
+        # torrent_file.write_torrent(self.torrent_dir)
         file_infos = torrent_file.info['files']
         # receiving_file = incompleteFile(torrent_file.info['name'], self.name, torrent_file.info['size'])
         receiving_files = []
@@ -208,13 +210,8 @@ class Peer:
 
     def run(self):
         print("Running")
-        tracker_ip = input("Enter tracker ip: ")
-        tracker_port = int(input("Enter tracker port: "))
-        self.connect_to_manager(tracker_ip, tracker_port)
-        stay_conn_manager_thread = threading.Thread(target=self.periodically_announce_manager, daemon=True)
-        stay_conn_manager_thread.start()
-        accept_peers_connection_thread = threading.Thread(target=self.accept_peers_connection, daemon=True)
-        accept_peers_connection_thread.start()
+        ti = "89.0.142.86"
+        tp = 1000
         while True:
             inp = input("Enter command: ")
             if inp == 'c' or inp == 'close':
@@ -222,18 +219,41 @@ class Peer:
                 self.manager_conn_socket.close()
                 break
             elif inp == 'upload':
+                tracker_ip = input("Enter tracker ip: ")
+                tracker_port = int(input("Enter tracker port: "))
+                if tracker_ip != ti or tracker_port != tp:
+                    self.connect_to_manager(tracker_ip, tracker_port)
+                    stay_conn_manager_thread = threading.Thread(target=self.periodically_announce_manager, daemon=True)
+                    stay_conn_manager_thread.start()
+                    accept_peers_connection_thread = threading.Thread(target=self.accept_peers_connection, daemon=True)
+                    accept_peers_connection_thread.start()
+                    ti = tracker_ip
+                    tp = tracker_port
+
                 file_names = input("Enter file names: ")
-                info_hash = self.upload_file(file_names)
-                print("Info hash:", info_hash)
+                self.upload_file(file_names)
+
             elif inp == 'download':
-                info_hash = input("Enter info hash: ")
+                torrent_file_name = input("Enter torrent file: ")
+                with open(self.torrent_dir + torrent_file_name, 'rb') as f:
+                    torrent_content = pickle.load(f)
+                    announce = torrent_content['announce']
+                    info = torrent_content['info']
+                info_hash = hashlib.sha1(pickle.dumps(info)).hexdigest()
+                tracker_ip = announce['ip']
+                tracker_port = announce['port']
+                self.connect_to_manager(tracker_ip, tracker_port)
+                stay_conn_manager_thread = threading.Thread(target=self.periodically_announce_manager, daemon=True)
+                stay_conn_manager_thread.start()
+                accept_peers_connection_thread = threading.Thread(target=self.accept_peers_connection, daemon=True)
+                accept_peers_connection_thread.start()
                 self.download_file(info_hash)
             elif inp == 'connect':
                 peer_addr = input("Enter peer address: ")
                 peer_addr = (peer_addr.split(':')[0], int(peer_addr.split(':')[1]))
                 self.connect_to_peer(peer_addr)
             else:
-                print("Invalid command, try again")
+                print("Invalid command, please try again")
 
 def main():
     port = int(input("Enter port: "))
