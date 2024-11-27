@@ -4,7 +4,7 @@ import pickle
 import os
 import time
 
-CONN_TEST_TIME = 6
+CONN_TEST_TIME = 4
 
 def get_local_ip():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:

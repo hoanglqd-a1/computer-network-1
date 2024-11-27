@@ -16,16 +16,16 @@ class completeFile(file):
         super().__init__(filename, owner)
         self.size = self.get_size(self.path)
         self.n_chunks = math.ceil(self.size / self.chunk_size)
-        self.fp = open(self.path, 'rb')
 
     def get_chunk_no(self, chunk_no):
         
         return self._get_chunk(chunk_no * self.chunk_size)
 
     def _get_chunk(self, offset):
-        self.fp.seek(offset, 0)
-        chunk = self.fp.read(self.chunk_size)
-        return chunk
+        with open(self.path, 'rb') as fp:
+            fp.seek(offset, 0)
+            chunk = fp.read(self.chunk_size)
+            return chunk
 
     @staticmethod
     def get_size(path):

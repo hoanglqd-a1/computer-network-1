@@ -8,8 +8,8 @@ import hashlib
 from file import completeFile, incompleteFile, PIECE_LENGTH
 
 PEERS_DIR = "./Peers/"
-CONN_STAY_TIME = 3
-PEER_TIMEOUT = 10
+CONN_STAY_TIME = 2
+PEER_TIMEOUT = 4
 TRACKER_PORT = 1234
 
 def get_local_ip():
@@ -75,7 +75,12 @@ class Peer:
                 incomp_file.write_chunk(message['chunk'], chunk_no)
         except socket.timeout:
             print(f"peer {peer_addr} did not send the file")
-        print(f"received the chunk {chunk_no + 1}/{incomp_file.n_chunks} from {peer_addr}")
+        except pickle.UnpicklingError:
+            print(f"failed to receive the chunk {chunk_no + 1}/{incomp_file.n_chunks} from {peer_addr}")
+        except Exception as e:
+            print(e)
+        else:
+            print(f"received the chunk {chunk_no + 1}/{incomp_file.n_chunks} from {peer_addr}")
         sock.send(pickle.dumps({"type": "close"}))
         sock.close()
     def accept_peers_connection(self):
@@ -156,7 +161,6 @@ class Peer:
                 get_chunk_thread.start()
             for thread in running_thread:
                 thread.join()
-            time.sleep(1)
 
         end = time.time()
         print(f"Time taken to download {torrent_file.info['name']} is {end - start} seconds")
