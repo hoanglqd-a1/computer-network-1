@@ -14,7 +14,7 @@ def get_local_ip():
 def is_socket_closed(s):
     try:
         obj = pickle.dumps('testing conn')
-        s.send(obj)
+        s.sendall(obj)
     except BlockingIOError:
         return False  # socket is open and reading from it would block
     except ConnectionResetError:
@@ -52,6 +52,7 @@ class Manager:
         for info_hash in self.torrent_dict.keys():
             if addr in self.torrent_dict[info_hash]['peers']:
                 self.torrent_dict[info_hash]['peers'].remove(addr)
+        print(f"Peers {addr}'s connection has stopped")
 
     def periodically_check_connection(self):
         while True:
@@ -89,7 +90,7 @@ class Manager:
                         message = pickle.dumps({
                             'type': 'not available',
                         })
-                        conn.send(message)
+                        conn.sendall(message)
                         continue
                     peers = list(self.torrent_dict[info_hash]['peers'])
                     message = pickle.dumps({
@@ -97,7 +98,7 @@ class Manager:
                         'peers with file': peers,
                         'torrent': self.torrent_dict[info_hash]['torrent'],
                     })
-                    conn.send(message)
+                    conn.sendall(message)
                 elif message['type'] == 'downloaded':
                     info_hash = message['info_hash']
                     self.torrent_dict[info_hash]['peers'].add(message['addr'])
