@@ -37,6 +37,8 @@ class Peer:
         self.my_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.my_socket.bind((self.ip, self.port))
 
+        self.file_list = []
+
     def connect_to_manager(self, ip, port=TRACKER_PORT):
         self.manager_conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.manager_addr = (ip, port)
@@ -137,6 +139,7 @@ class Peer:
             if not os.path.isfile(file_dir):
                 print(f"File {file_name} does not exist")
                 file_dirs.remove(file_dir)
+                file_names.remove(file_name)
 
         torrent_file = torrent(file_dirs, PIECE_LENGTH, self.manager_addr[0], self.manager_addr[1])
         info_hash = torrent_file.get_info_hash()
@@ -147,6 +150,8 @@ class Peer:
             'addr': (self.ip, self.port),
             'torrent': torrent_file,
         })
+        for file_name in file_names:
+            self.file_list.append(file_name)
         # print(len(message))
         self.manager_conn_socket.sendall(message)
         return info_hash
@@ -205,6 +210,7 @@ class Peer:
 
         for receiving_file in receiving_files:
             receiving_file.write_file()
+            self.file_list.append(receiving_file.filename)
         print(f"File {torrent_file.info['name']} downloaded")
         self.manager_conn_socket.sendall(pickle.dumps({'type': 'downloaded', 'info_hash': info_hash, 'addr': (self.ip, self.port)}))
 
@@ -252,6 +258,8 @@ class Peer:
                 peer_addr = input("Enter peer address: ")
                 peer_addr = (peer_addr.split(':')[0], int(peer_addr.split(':')[1]))
                 self.connect_to_peer(peer_addr)
+            elif inp == 'get files':
+                print(self.file_list)
             else:
                 print("Invalid command, please try again")
 
