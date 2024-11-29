@@ -3,6 +3,7 @@ import threading
 import pickle
 import os
 import time
+from swarm import swarm
 
 CONN_TEST_TIME = 4
 
@@ -34,7 +35,7 @@ class Manager:
         self.IP = get_local_ip()
         self.PORT = port
         print(f"Tracker is running on {self.IP}:{self.PORT}")
-        
+
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind((self.IP, self.PORT))
         self.s.listen(10)
@@ -50,8 +51,8 @@ class Manager:
         self.connections.pop(addr)
         self.last_check.pop(addr)
         for info_hash in self.torrent_dict.keys():
-            if addr in self.torrent_dict[info_hash]['peers']:
-                self.torrent_dict[info_hash]['peers'].remove(addr)
+            if addr in self.torrent_dict[info_hash].peers.keys():
+                self.torrent_dict[info_hash].remove_peer(addr)
         print(f"Peers {addr}'s connection has stopped")
 
     def periodically_check_connection(self):
@@ -79,30 +80,42 @@ class Manager:
                     info_hash = message['info_hash']
                     torrent_file = message['torrent']
                     if info_hash not in self.torrent_dict:
-                        self.torrent_dict[info_hash] = {}
-                        self.torrent_dict[info_hash]['torrent'] = torrent_file
-                        self.torrent_dict[info_hash]['peers'] = set()
-                    self.torrent_dict[info_hash]['peers'].add(message['addr'])
+                        self.torrent_dict[info_hash] = swarm(torrent_file)
+                    self.torrent_dict[info_hash].add_peer(message['addr'], True)
                     print(message['info_hash'], message['torrent'].info['name'], message['addr'])
                 elif message['type'] == 'get peers':
                     info_hash = message['info_hash']
-                    if info_hash not in self.torrent_dict or self.torrent_dict[info_hash]['peers'] == set():
+                    if info_hash not in self.torrent_dict or self.torrent_dict[info_hash].complete_peers == set():
                         message = pickle.dumps({
                             'type': 'not available',
                         })
                         conn.sendall(message)
                         continue
-                    peers = list(self.torrent_dict[info_hash]['peers'])
+                    self.torrent_dict[info_hash].add_peer(addr, False)
+                    peers = list(self.torrent_dict[info_hash].complete_peers)
                     message = pickle.dumps({
                         'type': 'available',
                         'peers with file': peers,
-                        'torrent': self.torrent_dict[info_hash]['torrent'],
+                        'torrent': self.torrent_dict[info_hash].torrent_file,
+                    })
+                    conn.sendall(message)
+                elif message['type'] == 'downloaded chunk':
+                    chunk_no = message['chunk_no']
+                    info_hash = message['info_hash']
+                    self.torrent_dict[info_hash].update(addr, chunk_no)
+                elif message['type'] == 'get rarest chunks':
+                    info_hash = message['info_hash']
+                    available_peer_num = message['available_peer_num']
+                    received_chunks = message['received_chunks']
+                    message = pickle.dumps({
+                        'type': 'rarest chunk',
+                        'chunks': self.torrent_dict[info_hash].get_rarest_chunks(available_peer_num, received_chunks),
                     })
                     conn.sendall(message)
                 elif message['type'] == 'downloaded':
                     info_hash = message['info_hash']
-                    self.torrent_dict[info_hash]['peers'].add(message['addr'])
-                    print("Peers holding file:", list(self.torrent_dict[info_hash]['peers']))
+                    self.torrent_dict[info_hash].complete_peers.add(addr)
+                    print("Peers holding file:", list(self.torrent_dict[info_hash].complete_peers))
                         
             except Exception as e:
                 print(e)

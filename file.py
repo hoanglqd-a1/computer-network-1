@@ -1,7 +1,7 @@
 import math
 import os
 
-PIECE_LENGTH = 4 * 1024
+PIECE_LENGTH = 512 * 1024
 
 class file:
     chunk_size = PIECE_LENGTH

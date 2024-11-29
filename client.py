@@ -7,6 +7,7 @@ from torrent import torrent
 import hashlib
 from file import completeFile, incompleteFile, PIECE_LENGTH
 from piece_mapping import piece_mapping
+import random
 
 PEERS_DIR = "./Peers/"
 CONN_STAY_TIME = 2
@@ -36,8 +37,6 @@ class Peer:
         
         self.my_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.my_socket.bind((self.ip, self.port))
-
-        self.file_list = []
 
     def connect_to_manager(self, ip, port=TRACKER_PORT):
         self.manager_conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -139,7 +138,6 @@ class Peer:
             if not os.path.isfile(file_dir):
                 print(f"File {file_name} does not exist")
                 file_dirs.remove(file_dir)
-                file_names.remove(file_name)
 
         torrent_file = torrent(file_dirs, PIECE_LENGTH, self.manager_addr[0], self.manager_addr[1])
         info_hash = torrent_file.get_info_hash()
@@ -150,8 +148,6 @@ class Peer:
             'addr': (self.ip, self.port),
             'torrent': torrent_file,
         })
-        for file_name in file_names:
-            self.file_list.append(file_name)
         # print(len(message))
         self.manager_conn_socket.sendall(message)
         return info_hash
@@ -176,6 +172,35 @@ class Peer:
         received_chunks = [False for _ in range(total_chunks)]
         
         start = time.time()
+        remaining = 4
+        while True:
+            self.manager_conn_socket.sendall(pickle.dumps({'type': 'get peers', 'info_hash': info_hash}))
+            message = pickle.loads(self.manager_conn_socket.recv(8192))
+            if message['type'] == 'not available':
+                print("File is not available")
+                return
+            for peer_addr in message['peers with file']:
+                if peer_addr == (self.ip, self.port):
+                    continue
+                missing_chunks = [i for i in range(total_chunks) if not received_chunks[i]]
+                random_idx = missing_chunks[random.randint(0, len(missing_chunks) - 1)]
+                file_index, chunk_no = mapping.get_file_chunk_no(random_idx)
+                successed = [[False, random_idx]]
+                receiving_file = receiving_files[file_index]
+                self.get_chunk_from_peer(torrent_file, peer_addr, chunk_no, receiving_file, successed, random_idx, file_index, 0)
+                remaining -= 1
+                if successed[0][0]:
+                    received_chunks[successed[0][1]] = True
+                    message = pickle.dumps({
+                        'type': 'downloaded chunk',
+                        'chunk_no': successed[0][1],
+                        'info_hash': info_hash,
+                    })
+                    self.manager_conn_socket.sendall(message)
+                if remaining == 0:
+                    break
+            if remaining == 0:
+                break
         while not all(received_chunks):
             self.manager_conn_socket.sendall(pickle.dumps({'type': 'get peers', 'info_hash': info_hash}))
             message = pickle.loads(self.manager_conn_socket.recv(8192))
@@ -183,10 +208,21 @@ class Peer:
                 print("File is not available")
                 return
             peers_with_file = message['peers with file']
+            if (self.ip, self.port) in peers_with_file:
+                peers_with_file.remove((self.ip, self.port))
             running_thread = []
-            missing_chunks = [i for i in range(total_chunks) if not received_chunks[i]]
+            available_peer_num = len(peers_with_file)
+            message = pickle.dumps({
+                'type': 'get rarest chunks',
+                'info_hash': info_hash,
+                'available_peer_num': available_peer_num,
+                'received_chunks': received_chunks,
+            })
+            self.manager_conn_socket.sendall(message)
+            message = pickle.loads(self.manager_conn_socket.recv(8192))
+            rarest_chunks = message['chunks']
             successed = []
-            for i, (missing_chunk, peer_addr) in enumerate(zip(missing_chunks, peers_with_file)):
+            for i, (missing_chunk, peer_addr) in enumerate(zip(rarest_chunks, peers_with_file)):
                 successed.append([False, missing_chunk])
                 file_index, chunk_no = mapping.get_file_chunk_no(missing_chunk)
                 receiving_file = receiving_files[file_index]
@@ -202,15 +238,21 @@ class Peer:
 
             for success, missing_chunk in successed:
                 received_chunks[missing_chunk] = success
+                if success:
+                    message = pickle.dumps({
+                        'type': 'downloaded chunk',
+                        'chunk_no': missing_chunk,
+                        'info_hash': info_hash,
+                    })
+                    self.manager_conn_socket.sendall(message)
 
-            time.sleep(0.1)
+            time.sleep(0.3)
 
         end = time.time()
         print(f"Time taken to download {torrent_file.info['name']} is {end - start} seconds")
 
         for receiving_file in receiving_files:
             receiving_file.write_file()
-            self.file_list.append(receiving_file.filename)
         print(f"File {torrent_file.info['name']} downloaded")
         self.manager_conn_socket.sendall(pickle.dumps({'type': 'downloaded', 'info_hash': info_hash, 'addr': (self.ip, self.port)}))
 
@@ -241,25 +283,30 @@ class Peer:
 
             elif inp == 'download':
                 torrent_file_name = input("Enter torrent file: ")
-                with open(self.torrent_dir + torrent_file_name, 'rb') as f:
-                    torrent_content = pickle.load(f)
-                    announce = torrent_content['announce']
-                    info = torrent_content['info']
+                try:
+                    with open(self.torrent_dir + torrent_file_name, 'rb') as f:
+                        torrent_content = pickle.load(f)
+                        announce = torrent_content['announce']
+                        info = torrent_content['info']
+                except FileNotFoundError:
+                    print("No such file or directory exists")
+                    continue
                 info_hash = hashlib.sha1(pickle.dumps(info)).hexdigest()
                 tracker_ip = announce['ip']
                 tracker_port = announce['port']
-                self.connect_to_manager(tracker_ip, tracker_port)
-                stay_conn_manager_thread = threading.Thread(target=self.periodically_announce_manager, daemon=True)
-                stay_conn_manager_thread.start()
-                accept_peers_connection_thread = threading.Thread(target=self.accept_peers_connection, daemon=True)
-                accept_peers_connection_thread.start()
+                if tracker_ip != ti or tracker_port != tp:
+                    self.connect_to_manager(tracker_ip, tracker_port)
+                    stay_conn_manager_thread = threading.Thread(target=self.periodically_announce_manager, daemon=True)
+                    stay_conn_manager_thread.start()
+                    accept_peers_connection_thread = threading.Thread(target=self.accept_peers_connection, daemon=True)
+                    accept_peers_connection_thread.start()
+                    ti = tracker_ip
+                    tp = tracker_port
                 self.download_file(info_hash)
             elif inp == 'connect':
                 peer_addr = input("Enter peer address: ")
                 peer_addr = (peer_addr.split(':')[0], int(peer_addr.split(':')[1]))
                 self.connect_to_peer(peer_addr)
-            elif inp == 'get files':
-                print(self.file_list)
             else:
                 print("Invalid command, please try again")
 
