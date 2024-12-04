@@ -8,17 +8,16 @@ class torrent:
         self.tracker_ip  = tracker_ip
         self.tracker_port = tracker_port
         self.piece_length = piece_length
-        
+        self.announce = {
+            'ip': self.tracker_ip,
+            'port': self.tracker_port,
+        }
         name = ""
         size = 0
         for file_path in file_paths:
             name += file_path.split('/')[-1] + ' '
             size += os.path.getsize(file_path)
         
-        self.announce = {
-            'ip': self.tracker_ip,
-            'port': self.tracker_port,
-        }
         self.info = {
             'name': name[:-1],
             'size': size,
